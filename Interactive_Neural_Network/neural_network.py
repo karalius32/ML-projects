@@ -1,7 +1,4 @@
 import numpy as np
-from matplotlib import pyplot as plt
-from torch import nn as torch_nn
-import torch
 
 
 class Sigmoid():
@@ -28,6 +25,19 @@ class ReLU():
 
   def backward(self, gradient):
     self.gradient = np.where(self.input > 0, 1, 0) * gradient
+    return self.gradient
+
+
+class Linear():
+  def __init__(self):
+    self.layer_type= "activation"
+
+  def forward(self, X):
+    self.input = X
+    return self.input
+
+  def backward(self, gradient):
+    self.gradient = np.ones(self.input.shape) * gradient
     return self.gradient
 
 
@@ -99,7 +109,7 @@ class MSE():
 
   def forward(self, y_pred, y_true):
     self.error = y_pred - y_true
-    self.output = np.sum(self.error ** 2, axis=1)
+    self.output = np.mean(self.error ** 2)
     return self.output
 
   def backward(self):
@@ -161,6 +171,7 @@ class Model_Base():
       acc_train = accuracy(y_pred_train, y)
       self.history["train_loss"].append(loss_train)
       self.history["train_accuracy"].append(acc_train)
+      '''
       if type(val_data) != type(None):
         X_val, y_val = val_data
         y_pred_val = self.predict(X_val)
@@ -168,6 +179,7 @@ class Model_Base():
         acc_val = accuracy(y_pred_val, y_val)
         self.history["val_loss"].append(loss_val)
         self.history["val_accuracy"].append(acc_val)
+      '''
       
 
 def accuracy(y_pred, y_true):
@@ -176,18 +188,35 @@ def accuracy(y_pred, y_true):
   return np.sum(np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)) / len(y_pred)
 
 class Model(Model_Base):
-  def __init__(self, layers):
+  def __init__(self, layers, output_dropdown):
     self.sequential = []
     for i in range(1, len(layers.layers)):
         self.sequential.append(Layer(layers.layers[i - 1].n, layers.layers[i].n))
-        self.sequential.append(ReLU())
         if layers.layers[i].buttons != None:
-          if layers.layers[i].buttons["activation"].getSelected() == None or layers.layers[i].buttons["activation"].getSelected() == "ReLU":
-            print("relu")
-          elif layers.layers[i].buttons["activation"].getSelected() == "Sigmoid":
-            print("sigmoid")
-    self.sequential[-1] = SoftMax()
+          if layers.layers[i].activation_name == "ReLU":
+            self.sequential.append(ReLU())
+          elif layers.layers[i].activation_name == "Sigmoid":
+            self.sequential.append(Sigmoid())
+          elif layers.layers[i].activation_name == "Linear":
+            self.sequential.append(Linear())
+        else:
+          self.sequential.append(SoftMax())
+    if output_dropdown.getSelected() == None or output_dropdown.getSelected() == "Softmax":
+      self.sequential[-1] = SoftMax()
+    elif output_dropdown.getSelected() == "Sigmoid":
+      self.sequential[-1] = Sigmoid()
+    elif output_dropdown.getSelected() == "Linear":
+      self.sequential[-1] = Linear()
     super().__init__(self.sequential)
+
+  def get_weights_and_biases(self):
+    weights = []
+    biases = [[1, 1]]
+    for layer in self.sequential:
+      if layer.layer_type == "layer":
+        weights.append(layer.W)
+        biases.append(layer.b[0])
+    return weights, biases
 
 '''
 if layers.layers[i].buttons != None:
@@ -196,31 +225,3 @@ if layers.layers[i].buttons != None:
   elif layers.layers[i].buttons["activation"].getSelected() == "Sigmoid":
     self.sequential.append(Sigmoid())
 '''
-
-
-class ModelTorch(torch_nn.Module):
-    def __init__(self, layers):
-        super().__init__()
-        sequential = []
-        for i in range(1, len(layers.layers)):
-            sequential.append(torch_nn.Linear(layers.layers[i - 1].n, layers.layers[i].n))
-            sequential.append(torch_nn.ReLU())
-        sequential.pop(-1)
-        self.sequential = torch_nn.Sequential(*sequential)
-
-    def forward(self, X):
-      return self.sequential(X)
-
-    def fit(self, X, y, epochs, loss_fn, batch_size, optimizer, val_data=None):
-      # Training
-      for i in range(epochs):
-        indeces = np.random.choice(len(X), len(X), replace=False)
-        for j in range(len(X) // batch_size):
-          X_batch = X[indeces[j * batch_size : j * batch_size + 10]]
-          y_batch = y[indeces[j * batch_size : j * batch_size + 10]]
-          y_pred = self(X_batch)
-          loss = loss_fn(y_pred, y_batch)
-          loss.backward()
-          optimizer.step()
-          optimizer.zero_grad()
-      
